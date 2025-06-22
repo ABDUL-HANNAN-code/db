@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    ports:
+    - "8000:8000" 
+    environment:
+      - MONGODB_URL=${MONGODB_URL}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM}
+      - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE}
+      - UPLOAD_FOLDER=${UPLOAD_FOLDER}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE}
+      - SSL_CERT_PATH=${SSL_CERT_PATH}
+      - SSL_KEY_PATH=${SSL_KEY_PATH}
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    networks:
+      - quantum-network
+
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${DATABASE_NAME}
+    volumes:
+      - mongodb_data:/data/db
+      - ./backups:/backups
+      - ./init-mongo-enhanced.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - quantum-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - quantum-network
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./uploads:/var/www/uploads:ro
+    depends_on:
+      - app
+    networks:
+      - quantum-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      # ✅ This must be a valid file!
+      - ./monitoring/prometheus.yml:/etc/prometheus/custom_prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/custom_prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - quantum-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  prometheus_data:
+
+networks:
+  quantum-network:
+    driver: bridge

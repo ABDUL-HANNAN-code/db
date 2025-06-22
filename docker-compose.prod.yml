@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      - MONGODB_URL=mongodb://admin:secure_mongo_password_change_me@mongodb:27017/quantum_dashboard_prod?authSource=admin
+      - DATABASE_NAME=quantum_dashboard_prod
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=secure_redis_password_change_me
+      - JWT_SECRET_KEY=ultra_secure_jwt_secret_key_change_in_production_minimum_32_chars
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=60
+      - CORS_ORIGINS=["http://127.0.0.1:5500","http://localhost:5500"]
+      - ALLOWED_HOSTS=["localhost","127.0.0.1"]
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=secure_mongo_password_change_me
+      - MONGO_INITDB_DATABASE=quantum_dashboard_prod
+    volumes:
+      - mongodb_data:/data/db
+      - ./backups:/backups
+      - ./init-mongo-enhanced.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass secure_redis_password_change_me
+    volumes:
+      - redis_data:/data
+    networks:
+      - quantum-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8000:8000"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./uploads:/var/www/uploads:ro
+    depends_on:
+      - app
+    networks:
+      - quantum-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    networks:
+      - quantum-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  prometheus_data:
+
+networks:
+  quantum-network:
+    driver: bridge
