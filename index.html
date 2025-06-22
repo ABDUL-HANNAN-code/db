@@ -1766,7 +1766,9 @@
       // CONSTANTS AND STATE
       // ========================
 
-      const API_BASE = "http://localhost:8000";
+      // Use relative API base so the frontend works behind reverse proxies
+      // or when the backend runs on a different host/port.
+      const API_BASE = "/api";
       const QUANTUM_LEVELS = [
         "Quantum Novice",
         "Temporal Explorer",

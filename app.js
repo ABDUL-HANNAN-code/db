@@ -2,7 +2,7 @@
 // Example: Test backend connectivity
 async function testBackendConnection() {
     try {
-        const response = await fetch("http://localhost:8000/api/health", {
+        const response = await fetch("/api/health", {
             method: "GET",
         });
         const data = await response.json();
